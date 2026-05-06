@@ -46,7 +46,7 @@ O simulador gera:
 
 1. trajetória verdadeira do robô;
 2. odometria com ruído e drift;
-3. medições visuais tipo ArUco/AprilTag: `[range, bearing, id]`;
+3. medições visuais tipo ArUco: `[range, bearing, id]`;
 4. EKF-SLAM com prediction por incrementos de odometria e correction por landmarks.
 
 O EKF está separado de ROS. Mais tarde, o mesmo `EKFSLAM` deve ser chamado por um `slam_node.py` ou por um `bag_runner.py`.
