@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'slam_node = tb3_ekf_slam.slam_node:main',
+            'path_node = tb3_ekf_slam.path_node:main',
+            'aruco_odom_node = tb3_ekf_slam.aruco_odom_node:main',
         ],
     },
 )

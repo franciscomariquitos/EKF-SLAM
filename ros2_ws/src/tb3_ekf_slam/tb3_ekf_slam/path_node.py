@@ -20,14 +20,14 @@ Importante:
         - EKF correction;
         - landmarks em RViz.
 """
-
 import math
-
 import rclpy
 from rclpy.node import Node
 
 from nav_msgs.msg import Odometry, Path
-from geometry_msgs.msg import PoseStamped
+
+from tb3_ekf_slam.utils import yaw_from_quaternion, create_pose_stamped
+
 
 
 def yaw_from_quaternion(q):
@@ -207,7 +207,13 @@ class SlamNode(Node):
 
         # Path é uma lista de PoseStamped(array de posição+orientação com timestamp).
         # Por isso, cada ponto da trajetória tem de ser uma PoseStamped.
-        pose = PoseStamped()
+        pose = create_pose_stamped(
+            x=x,
+            y=y,
+            yaw=theta,
+            stamp=msg.header.stamp,
+            frame_id="odom",
+        )
 
         # Copiamos o timestamp da odometria.
         # Isto é importante para manter coerência temporal.
