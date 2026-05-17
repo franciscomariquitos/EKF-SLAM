@@ -2,3 +2,22 @@ __pycache__/
 *.pyc
 *.pyo
 .vscode/
+
+# ROS2
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
+
+# Bags
+*.db3
+*.mcap
+
+# RViz temp
+*.rviz2
