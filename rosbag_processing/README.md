@@ -6,7 +6,6 @@ Main files:
 - `main_bag_offline.py`: processes recorded odometry and ArUco detections.
 - `ekf_slam.py`: EKF-SLAM core implementation.
 - `config.py`: EKF uncertainty and gating parameters.
-- `plot_bag_diagnostics.py`: generates diagnostic plots from exported CSV files.
 - `plotting.py`: plotting utilities.
 - `utils.py`: mathematical helper functions.
 
