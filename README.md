@@ -2,15 +2,6 @@
 
 This repository contains an EKF-SLAM project for TurtleBot3 using ROS 2 Humble, odometry, ArUco landmarks and rosbag replay.
 
-The current implementation includes:
-
-* ROS 2 package structure;
-* rosbag playback workflow;
-* odometry trajectory visualization in RViz;
-* ArUco landmark visualization in RViz;
-* conversion of relative ArUco measurements into global `odom` coordinates;
-* modular Python nodes prepared for EKF-SLAM integration.
-
 ---
 
 # Repository Structure
