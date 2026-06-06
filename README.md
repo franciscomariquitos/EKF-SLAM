@@ -8,22 +8,31 @@ This repository contains an EKF-SLAM project for TurtleBot3 using ROS 2 Humble, 
 
 ```text
 EKF-SLAM/
+├── camera_calibration/
+│   ├── README.md
+│   ├── my_webcam_test.yaml
+│   ├── turtbot3_cam.txt
+│   └── turtbot3_cam.yaml
 ├── microsimulator/
-├── ros2_ws/
-│   └── src/
-│       └── tb3_ekf_slam/
-│           ├── package.xml
-│           ├── setup.py
-│           └── tb3_ekf_slam/
-│               ├── __init__.py
-│               ├── slam_node.py
-│               ├── aruco_rviz_node.py
-│               └── utils.py
-├── bags/
-├── docs/
+│   ├── config.py
+│   ├── ekf_slam.py
+│   ├── evaluation.py
+│   ├── main.py
+│   ├── main_manual.py
+│   ├── manual_teleop.py
+│   ├── plotting.py
+│   ├── simulation.py
+│   ├── utils.py
+│   └── world.py
+├── rosbag_processing/
+│   ├── marker_lab.py
+│   ├── main_bag_offline.py
+│   ├── ekf_slam.py
+│   ├── config.py
+│   ├── plotting.py
+│   └── utils.py
 ├── README.md
-└── .gitignore
-```
+└── .gitignore# Repository Structure
 
 ---
 
