@@ -8,14 +8,7 @@ from pathlib import Path
 
 from config import SimConfig
 from evaluation import summarize_monte_carlo
-from io_utils import (
-    print_metrics,
-    save_covariance_matrices_csv,
-    save_diagnostics_csv,
-    save_history_csv,
-    save_metrics_csv,
-    save_single_run_metrics_txt
-)
+from io_utils import print_metrics, save_diagnostics_csv, save_history_csv, save_metrics_csv
 from plotting import plot_all_diagnostics, plot_monte_carlo_boxplots
 from simulation import run_monte_carlo, run_single_simulation
 
@@ -40,10 +33,8 @@ def main() -> None:
     # One run for visual debugging and paper figures.
     single = run_single_simulation(cfg)
     print_metrics("Single run metrics", single["metrics"])
-    save_single_run_metrics_txt(single, outdir)
     save_history_csv(single, outdir)
     save_diagnostics_csv(single, outdir)
-    save_covariance_matrices_csv(single, outdir)
     plot_all_diagnostics(single, outdir, show=not args.no_show)
 
     # Monte Carlo for statistical evidence.

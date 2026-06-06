@@ -9,6 +9,8 @@ import numpy as np
 
 from ekf_slam import EKFSLAM
 
+import math
+
 
 class LiveView:
     """Small live 2D viewer for the micro-simulator.
@@ -17,8 +19,10 @@ class LiveView:
     keyboard commands. This viewer only displays the current trajectories.
     """
 
-    def __init__(self, landmarks: np.ndarray, update_every: int = 2) -> None:
+    def __init__(self, landmarks: np.ndarray, sensor_fov: float, sensor_max_range: float, update_every: int = 2) -> None:
         self.landmarks = landmarks
+        self.sensor_fov = sensor_fov
+        self.sensor_max_range = sensor_max_range
         self.update_every = max(1, update_every)
         self.counter = 0
 
@@ -31,7 +35,28 @@ class LiveView:
         self.ekf_line, = self.ax.plot([], [], label="EKF-SLAM", linewidth=2.2)
 
         self.robot_dot, = self.ax.plot([], [], marker="o", markersize=8, linestyle="None", label="Robot")
-        self.heading_line, = self.ax.plot([], [], linewidth=2.0)
+        self.heading_line, = self.ax.plot([], [], linewidth=2.0, label="Robot heading")
+        self.fov_left_line, = self.ax.plot(
+            [],
+            [],
+            linestyle=":",
+            linewidth=1.5,
+            label="Camera FOV"
+        )
+
+        self.fov_right_line, = self.ax.plot(
+            [],
+            [],
+            linestyle=":",
+            linewidth=1.5
+        )
+
+        self.fov_arc_line, = self.ax.plot(
+            [],
+            [],
+            linestyle=":",
+            linewidth=1.2
+        )
         self.est_tags_scatter = self.ax.scatter([], [], marker="x", s=90, linewidths=2.0, label="Estimated tags")
 
         for i, lm in enumerate(self.landmarks):
@@ -74,6 +99,49 @@ class LiveView:
         self.heading_line.set_data(
             [x, x + heading_length * np.cos(theta)],
             [y, y + heading_length * np.sin(theta)],
+        )
+
+        # --------------------------------------------------------------
+        # Camera field of view
+        # --------------------------------------------------------------
+        # O FOV é desenhado no referencial global, a partir da pose verdadeira.
+        # A câmara está assumida alinhada com a frente do robô.
+        #
+        # Linha esquerda:
+        #     theta + fov/2
+        #
+        # Linha direita:
+        #     theta - fov/2
+        #
+        # Alcance:
+        #     sensor_max_range
+        left_angle = theta + self.sensor_fov / 2.0
+        right_angle = theta - self.sensor_fov / 2.0
+
+        left_x = x + self.sensor_max_range * np.cos(left_angle)
+        left_y = y + self.sensor_max_range * np.sin(left_angle)
+
+        right_x = x + self.sensor_max_range * np.cos(right_angle)
+        right_y = y + self.sensor_max_range * np.sin(right_angle)
+
+        self.fov_left_line.set_data(
+            [x, left_x],
+            [y, left_y],
+        )
+
+        self.fov_right_line.set_data(
+            [x, right_x],
+            [y, right_y],
+        )
+
+        # Arco do FOV
+        arc_angles = np.linspace(right_angle, left_angle, 40)
+        arc_x = x + self.sensor_max_range * np.cos(arc_angles)
+        arc_y = y + self.sensor_max_range * np.sin(arc_angles)
+
+        self.fov_arc_line.set_data(
+            arc_x,
+            arc_y,
         )
 
         estimated = ekf.estimated_landmarks()

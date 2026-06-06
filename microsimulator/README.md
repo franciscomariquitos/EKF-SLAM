@@ -1,6 +1,6 @@
 # EKF-SLAM Micro-simulator
 
-Micro-simulador Python para validar EKF-SLAM antes de Gazebo/ROS 2/rosbags reais.
+Micro-simulador Python para validar EKF-SLAM 
 
 ## Estrutura
 
@@ -46,7 +46,7 @@ O simulador gera:
 
 1. trajetória verdadeira do robô;
 2. odometria com ruído e drift;
-3. medições visuais tipo ArUco: `[range, bearing, id]`;
+3. medições visuais tipo ArUco/AprilTag: `[range, bearing, id]`;
 4. EKF-SLAM com prediction por incrementos de odometria e correction por landmarks.
 
 O EKF está separado de ROS. Mais tarde, o mesmo `EKFSLAM` deve ser chamado por um `slam_node.py` ou por um `bag_runner.py`.
@@ -80,3 +80,13 @@ Q                  terminar e guardar resultados
 ```
 
 Este modo continua a usar o mesmo EKF-SLAM. A diferença é apenas a origem dos comandos de movimento: em vez de um controlador automático por waypoints, os comandos vêm do teclado.
+
+
+## Noise tuning note
+
+The simulator now separates simulated camera noise from EKF-assumed camera noise:
+
+- `sim_sigma_range`, `sim_sigma_bearing`: noise used to generate fake ArUco measurements.
+- `ekf_sigma_range`, `ekf_sigma_bearing`: measurement covariance used by the EKF correction step.
+
+Similarly, EKF motion confidence is controlled by `ekf_sigma_motion_x`, `ekf_sigma_motion_y`, and `ekf_sigma_motion_theta`.

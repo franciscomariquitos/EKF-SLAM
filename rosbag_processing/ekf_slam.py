@@ -59,7 +59,6 @@ class EKFSLAM:
         }
         self.nis_values: List[float] = []
         self.diagnostics: List[dict] = []
-        
 
     def predict_from_odometry(self, delta_rot1: float, delta_trans: float, delta_rot2: float) -> None:
         """
@@ -372,27 +371,19 @@ class EKFSLAM:
         new_Sigma = np.zeros((old_n + 2, old_n + 2), dtype=float)
         new_Sigma[:old_n, :old_n] = self.Sigma
 
-        n_obs = P.shape[0]
-
-        if n_obs >= 2:
-            # Scatter of candidate position estimates.
-            scatter_cov = np.cov(P.T)
-
-            # Covariance of the estimated mean position.
-            # More consistent observations should reduce uncertainty.
-            cov = scatter_cov / n_obs
+        if P.shape[0] >= 2:
+            cov = np.cov(P.T)
         else:
             cov = np.diag([0.25**2, 0.25**2])
 
-            cov = np.asarray(cov, dtype=float)
+        # Regularization: avoid singular / overconfident covariance.
+        cov = np.asarray(cov, dtype=float)
         cov = 0.5 * (cov + cov.T)
+        cov += np.eye(2) * (0.05**2)
 
-        # Numerical regularization.
-        cov += np.eye(2) * (0.03**2)
-
-        # Avoid overconfident / singular landmark birth.
+        # Optional minimum uncertainty.
         eigvals, eigvecs = np.linalg.eigh(cov)
-        eigvals = np.maximum(eigvals, 0.03**2)
+        eigvals = np.maximum(eigvals, 0.05**2)
         cov = eigvecs @ np.diag(eigvals) @ eigvecs.T
 
         new_Sigma[old_n:old_n + 2, old_n:old_n + 2] = cov

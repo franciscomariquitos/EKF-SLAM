@@ -8,9 +8,28 @@ import numpy as np
 
 from config import SimConfig
 from ekf_slam import EKFSLAM
-from evaluation import compute_metrics
+from evaluation import compute_metrics, landmark_error_snapshot
 from utils import odometry_increment, pose_step
 from world import default_landmarks, default_waypoints, generate_visual_measurements, waypoint_controller
+
+import math
+
+
+def _append_diagnostics(history: dict, ekf: EKFSLAM, landmarks: np.ndarray) -> None:
+    """Append covariance and landmark-convergence diagnostics for the current EKF state."""
+    robot_cov = ekf.robot_covariance()
+    landmark_snapshot = landmark_error_snapshot(ekf, landmarks)
+
+    history["robot_sigma_x"].append(float(np.sqrt(max(robot_cov[0, 0], 0.0))))
+    history["robot_sigma_y"].append(float(np.sqrt(max(robot_cov[1, 1], 0.0))))
+    history["robot_sigma_theta"].append(float(np.sqrt(max(robot_cov[2, 2], 0.0))))
+    history["robot_cov_trace"].append(float(np.trace(robot_cov)))
+    history["initialized_landmarks"].append(int(ekf.stats["initialized_landmarks"]))
+    history["candidate_landmarks"].append(int(len(ekf.candidate_landmarks)))
+    history["landmark_rmse_over_time"].append(float(landmark_snapshot["rmse"]))
+    history["landmark_mean_error_over_time"].append(float(landmark_snapshot["mean"]))
+    history["n_landmarks_estimated_over_time"].append(int(landmark_snapshot["n"]))
+    history["landmark_errors_by_tag"].append(landmark_snapshot["per_tag"])
 
 
 def run_single_simulation(cfg: SimConfig) -> dict:
@@ -20,8 +39,9 @@ def run_single_simulation(cfg: SimConfig) -> dict:
     landmarks = default_landmarks()
 
     ekf = EKFSLAM(cfg)
+    ekf.mu[2, 0] = math.pi
 
-    true_pose = np.array([waypoints[0, 0], waypoints[0, 1], 0.0], dtype=float)
+    true_pose = np.array([waypoints[0, 0], waypoints[0, 1], math.pi], dtype=float)
     odom_pose = true_pose.copy()
     prev_odom_pose = odom_pose.copy()
 
@@ -35,6 +55,16 @@ def run_single_simulation(cfg: SimConfig) -> dict:
         "n_measurements": [],
         "accepted_updates": [],
         "rejected_outliers": [],
+        "robot_sigma_x": [],
+        "robot_sigma_y": [],
+        "robot_sigma_theta": [],
+        "robot_cov_trace": [],
+        "initialized_landmarks": [],
+        "candidate_landmarks": [],
+        "landmark_rmse_over_time": [],
+        "landmark_mean_error_over_time": [],
+        "n_landmarks_estimated_over_time": [],
+        "landmark_errors_by_tag": [],
     }
 
     t = 0.0
@@ -66,7 +96,12 @@ def run_single_simulation(cfg: SimConfig) -> dict:
             measurements: List[dict] = []
             if global_step % camera_period_steps == 0:
                 measurements = generate_visual_measurements(true_pose, landmarks, cfg, rng)
+                before_events = len(ekf.diagnostics)
                 ekf.update(measurements)
+                # Attach simulation time to the diagnostic events created during this camera frame.
+                for event in ekf.diagnostics[before_events:]:
+                    event["t"] = t
+                    event["step"] = global_step
 
             # 5) Store history.
             history["t"].append(t)
@@ -76,13 +111,19 @@ def run_single_simulation(cfg: SimConfig) -> dict:
             history["n_measurements"].append(len(measurements))
             history["accepted_updates"].append(ekf.stats["accepted_updates"])
             history["rejected_outliers"].append(ekf.stats["rejected_outliers"])
+            _append_diagnostics(history, ekf, landmarks)
 
             t += cfg.dt
             global_step += 1
 
-    for key in ["true", "odom", "ekf"]:
+    numeric_keys = [
+        "true", "odom", "ekf", "t", "n_measurements", "accepted_updates", "rejected_outliers",
+        "robot_sigma_x", "robot_sigma_y", "robot_sigma_theta", "robot_cov_trace",
+        "initialized_landmarks", "candidate_landmarks", "landmark_rmse_over_time",
+        "landmark_mean_error_over_time", "n_landmarks_estimated_over_time",
+    ]
+    for key in numeric_keys:
         history[key] = np.asarray(history[key], dtype=float)
-    history["t"] = np.asarray(history["t"], dtype=float)
 
     metrics = compute_metrics(history, ekf, landmarks, waypoints)
 

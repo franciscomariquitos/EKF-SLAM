@@ -1,16 +1,23 @@
-# ROS2 build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+# Results and generated plots
+results*/
+plots*/
+microsim_results/
+bag_ekf_results/
+bag_results*/
+*.zip
+
+# ROS 2 build artifacts
 build/
 install/
 log/
+ros2_ws/
 
-# Python
-__pycache__/
-*.pyc
-
-# Bags / large recordings
-*.db3
-*.mcap
-*.bag
-
-# VSCode
+# OS/editor
+.DS_Store
 .vscode/
+.idea/

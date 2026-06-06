@@ -16,10 +16,12 @@ import numpy as np
 
 from config import SimConfig
 from ekf_slam import EKFSLAM
-from evaluation import compute_metrics
+from evaluation import compute_metrics, landmark_error_snapshot
 from utils import odometry_increment, pose_step
 from world import default_landmarks, generate_visual_measurements
 from live_view import LiveView
+
+import math
 
 
 HELP_TEXT = [
@@ -48,47 +50,110 @@ def _handle_key(
     angular_scale: float,
     cfg: SimConfig,
 ) -> Tuple[float, float, float, float, bool]:
-    """Convert a keyboard key into teleoperation commands.
-
-    Returns:
-        v_cmd, w_cmd, linear_scale, angular_scale, should_quit
     """
+    Nova lógica de teleop:
+
+    W:
+        anda para a frente.
+
+    S:
+        para completamente e fica parado.
+
+    A:
+        se estava centrado, começa a virar à esquerda.
+        se estava a virar à direita, centra.
+
+    D:
+        se estava centrado, começa a virar à direita.
+        se estava a virar à esquerda, centra.
+
+    X / Space:
+        para completamente.
+
+    Q:
+        termina a simulação.
+    """
+
     should_quit = False
 
     if key in (ord("q"), ord("Q")):
         should_quit = True
 
+    # W = andar para a frente
     elif key in (ord("w"), ord("W"), curses.KEY_UP):
         v_cmd = cfg.max_v * linear_scale
 
+    # S = parar completamente
     elif key in (ord("s"), ord("S"), curses.KEY_DOWN):
-        # Reverse is intentionally slower than forward, like a cautious real robot.
-        v_cmd = -0.55 * cfg.max_v * linear_scale
+        v_cmd = 0.0
+        w_cmd = 0.0
 
+    # A = esquerda ou centrar se vinha da direita
     elif key in (ord("a"), ord("A"), curses.KEY_LEFT):
-        w_cmd = cfg.max_w * angular_scale
 
+        # Se estava a virar à direita, centra.
+        if w_cmd < 0.0:
+            w_cmd = 0.0
+
+        # Se estava centrado ou já à esquerda, fica a virar à esquerda.
+        else:
+            w_cmd = cfg.max_w * angular_scale
+
+    # D = direita ou centrar se vinha da esquerda
     elif key in (ord("d"), ord("D"), curses.KEY_RIGHT):
-        w_cmd = -cfg.max_w * angular_scale
 
+        # Se estava a virar à esquerda, centra.
+        if w_cmd > 0.0:
+            w_cmd = 0.0
+
+        # Se estava centrado ou já à direita, fica a virar à direita.
+        else:
+            w_cmd = -cfg.max_w * angular_scale
+
+    # Z = centrar direção, mas manter velocidade linear
     elif key in (ord("z"), ord("Z")):
         w_cmd = 0.0
 
+    # X ou espaço = parar tudo
     elif key in (ord("x"), ord("X"), ord(" ")):
         v_cmd = 0.0
         w_cmd = 0.0
 
+    # aumentar velocidade linear
     elif key in (ord("+"), ord("=")):
         linear_scale = min(1.0, linear_scale + 0.10)
 
+        # Se já estava a andar, atualiza logo a velocidade
+        if v_cmd > 0.0:
+            v_cmd = cfg.max_v * linear_scale
+
+    # diminuir velocidade linear
     elif key in (ord("-"), ord("_")):
         linear_scale = max(0.10, linear_scale - 0.10)
 
+        # Se já estava a andar, atualiza logo a velocidade
+        if v_cmd > 0.0:
+            v_cmd = cfg.max_v * linear_scale
+
+    # aumentar velocidade angular
     elif key in (ord("]"), ord("}")):
         angular_scale = min(1.0, angular_scale + 0.10)
 
+        # Se já estava a virar, atualiza magnitude mantendo o sinal
+        if w_cmd > 0.0:
+            w_cmd = cfg.max_w * angular_scale
+        elif w_cmd < 0.0:
+            w_cmd = -cfg.max_w * angular_scale
+
+    # diminuir velocidade angular
     elif key in (ord("["), ord("{")):
         angular_scale = max(0.10, angular_scale - 0.10)
+
+        # Se já estava a virar, atualiza magnitude mantendo o sinal
+        if w_cmd > 0.0:
+            w_cmd = cfg.max_w * angular_scale
+        elif w_cmd < 0.0:
+            w_cmd = -cfg.max_w * angular_scale
 
     return v_cmd, w_cmd, linear_scale, angular_scale, should_quit
 
@@ -179,7 +244,24 @@ def _draw_screen(
     stdscr.refresh()
 
 
-def run_manual_teleop_simulation(cfg: SimConfig, max_duration_s: float = 120.0, live_plot: bool = False) -> dict:
+
+def _append_diagnostics(history: dict, ekf: EKFSLAM, landmarks: np.ndarray) -> None:
+    """Append covariance and landmark-convergence diagnostics for the current EKF state."""
+    robot_cov = ekf.robot_covariance()
+    landmark_snapshot = landmark_error_snapshot(ekf, landmarks)
+
+    history["robot_sigma_x"].append(float(np.sqrt(max(robot_cov[0, 0], 0.0))))
+    history["robot_sigma_y"].append(float(np.sqrt(max(robot_cov[1, 1], 0.0))))
+    history["robot_sigma_theta"].append(float(np.sqrt(max(robot_cov[2, 2], 0.0))))
+    history["robot_cov_trace"].append(float(np.trace(robot_cov)))
+    history["initialized_landmarks"].append(int(ekf.stats["initialized_landmarks"]))
+    history["candidate_landmarks"].append(int(len(ekf.candidate_landmarks)))
+    history["landmark_rmse_over_time"].append(float(landmark_snapshot["rmse"]))
+    history["landmark_mean_error_over_time"].append(float(landmark_snapshot["mean"]))
+    history["n_landmarks_estimated_over_time"].append(int(landmark_snapshot["n"]))
+    history["landmark_errors_by_tag"].append(landmark_snapshot["per_tag"])
+
+def run_manual_teleop_simulation(cfg: SimConfig, max_duration_s: float = 1000.0, live_plot: bool = False) -> dict:
     """Run an interactive manual teleoperation simulation.
 
     The user drives the simulated robot with the keyboard. The simulator still
@@ -197,11 +279,13 @@ def _run_manual_teleop_curses(stdscr, cfg: SimConfig, max_duration_s: float, liv
 
     rng = np.random.default_rng(cfg.seed)
     landmarks = default_landmarks()
-    viewer = LiveView(landmarks) if live_plot else None
+    viewer = LiveView(landmarks, sensor_fov=cfg.sensor.fov, sensor_max_range=cfg.sensor.max_range,) if live_plot else None
     waypoints = np.array([[0.0, 0.0]], dtype=float)  # used only as the reference start point for metrics
 
     ekf = EKFSLAM(cfg)
-    true_pose = np.array([0.0, 0.0, 0.0], dtype=float)
+    ekf.mu[2, 0] = math.pi
+
+    true_pose = np.array([0.0, 0.0, math.pi], dtype=float)
     odom_pose = true_pose.copy()
     prev_odom_pose = odom_pose.copy()
 
@@ -213,6 +297,16 @@ def _run_manual_teleop_curses(stdscr, cfg: SimConfig, max_duration_s: float, liv
         "n_measurements": [],
         "accepted_updates": [],
         "rejected_outliers": [],
+        "robot_sigma_x": [],
+        "robot_sigma_y": [],
+        "robot_sigma_theta": [],
+        "robot_cov_trace": [],
+        "initialized_landmarks": [],
+        "candidate_landmarks": [],
+        "landmark_rmse_over_time": [],
+        "landmark_mean_error_over_time": [],
+        "n_landmarks_estimated_over_time": [],
+        "landmark_errors_by_tag": [],
     }
 
     camera_period_steps = max(1, int(round((1.0 / cfg.sensor.camera_rate_hz) / cfg.dt)))
@@ -258,7 +352,11 @@ def _run_manual_teleop_curses(stdscr, cfg: SimConfig, max_duration_s: float, liv
         measurements: List[dict] = []
         if global_step % camera_period_steps == 0:
             measurements = generate_visual_measurements(true_pose, landmarks, cfg, rng)
+            before_events = len(ekf.diagnostics)
             ekf.update(measurements)
+            for event in ekf.diagnostics[before_events:]:
+                event["t"] = t
+                event["step"] = global_step
 
         # 5) Store history.
         history["t"].append(t)
@@ -268,6 +366,7 @@ def _run_manual_teleop_curses(stdscr, cfg: SimConfig, max_duration_s: float, liv
         history["n_measurements"].append(len(measurements))
         history["accepted_updates"].append(ekf.stats["accepted_updates"])
         history["rejected_outliers"].append(ekf.stats["rejected_outliers"])
+        _append_diagnostics(history, ekf, landmarks)
 
         _draw_screen(
             stdscr,
@@ -292,9 +391,14 @@ def _run_manual_teleop_curses(stdscr, cfg: SimConfig, max_duration_s: float, liv
     if viewer is not None:
         viewer.close()
 
-    for key in ["true", "odom", "ekf"]:
+    numeric_keys = [
+        "true", "odom", "ekf", "t", "n_measurements", "accepted_updates", "rejected_outliers",
+        "robot_sigma_x", "robot_sigma_y", "robot_sigma_theta", "robot_cov_trace",
+        "initialized_landmarks", "candidate_landmarks", "landmark_rmse_over_time",
+        "landmark_mean_error_over_time", "n_landmarks_estimated_over_time",
+    ]
+    for key in numeric_keys:
         history[key] = np.asarray(history[key], dtype=float)
-    history["t"] = np.asarray(history["t"], dtype=float)
 
     metrics = compute_metrics(history, ekf, landmarks, waypoints)
 
